@@ -13,7 +13,7 @@ import {
   EmbeddingResponse,
   ProviderCapabilities,
   Tool,
-} from './types';
+} from './types.js';
 
 export abstract class BaseAIProvider implements AIProvider {
   abstract name: 'openai' | 'anthropic' | 'ollama';
@@ -23,15 +23,16 @@ export abstract class BaseAIProvider implements AIProvider {
 
   protected abstract client: unknown;
 
-  async chat(options: ChatCompletionOptions): Promise<ChatCompletionResponse> {
+  async chat(_options: ChatCompletionOptions): Promise<ChatCompletionResponse> {
     throw new Error('Not implemented');
   }
 
-  async *chatStream(options: ChatCompletionOptions): AsyncIterable<StreamingChatResponse> {
+  // eslint-disable-next-line require-yield
+  async *chatStream(_options: ChatCompletionOptions): AsyncGenerator<StreamingChatResponse> {
     throw new Error('Not implemented');
   }
 
-  async embed(options: EmbeddingOptions): Promise<EmbeddingResponse> {
+  async embed(_options: EmbeddingOptions): Promise<EmbeddingResponse> {
     throw new Error('Not implemented');
   }
 

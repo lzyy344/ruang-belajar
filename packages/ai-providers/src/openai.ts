@@ -2,19 +2,17 @@
 // OpenAI Provider Implementation
 // =============================================================================
 import OpenAI from 'openai';
-import { BaseAIProvider, createProviderConfig } from './base';
+import { BaseAIProvider, createProviderConfig } from './base.js';
 import {
   AIProviderConfig,
   AIModel,
-  ChatMessage,
   ChatCompletionOptions,
   ChatCompletionResponse,
   StreamingChatResponse,
   EmbeddingOptions,
   EmbeddingResponse,
   ProviderCapabilities,
-  TokenUsage,
-} from './types';
+} from './types.js';
 
 export class OpenAIProvider extends BaseAIProvider {
   name = 'openai' as const;
@@ -34,8 +32,8 @@ export class OpenAIProvider extends BaseAIProvider {
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', type: 'chat', maxTokens: 128000, costPer1kTokens: { input: 0.00015, output: 0.0006 }, supportsStreaming: true, supportsFunctions: true, supportsVision: true },
     { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'openai', type: 'chat', maxTokens: 128000, costPer1kTokens: { input: 0.01, output: 0.03 }, supportsStreaming: true, supportsFunctions: true, supportsVision: true },
     { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai', type: 'chat', maxTokens: 16384, costPer1kTokens: { input: 0.0005, output: 0.0015 }, supportsStreaming: true, supportsFunctions: true, supportsVision: false },
-    { id: 'text-embedding-3-small', name: 'Embedding 3 Small', provider: 'openai', type: 'embedding', maxTokens: 8191, costPer1kTokens: { input: 0.00002 }, supportsStreaming: false, supportsFunctions: false, supportsVision: false },
-    { id: 'text-embedding-3-large', name: 'Embedding 3 Large', provider: 'openai', type: 'embedding', maxTokens: 8191, costPer1kTokens: { input: 0.00013 }, supportsStreaming: false, supportsFunctions: false, supportsVision: false },
+    { id: 'text-embedding-3-small', name: 'Embedding 3 Small', provider: 'openai', type: 'embedding', maxTokens: 8191, costPer1kTokens: { input: 0.00002, output: 0 }, supportsStreaming: false, supportsFunctions: false, supportsVision: false },
+    { id: 'text-embedding-3-large', name: 'Embedding 3 Large', provider: 'openai', type: 'embedding', maxTokens: 8191, costPer1kTokens: { input: 0.00013, output: 0 }, supportsStreaming: false, supportsFunctions: false, supportsVision: false },
   ];
 
   client: OpenAI;
@@ -66,29 +64,31 @@ export class OpenAIProvider extends BaseAIProvider {
       frequency_penalty: options.frequencyPenalty,
       presence_penalty: options.presencePenalty,
       tools: tools as OpenAI.Chat.Completions.ChatCompletionTool[] | undefined,
-      tool_choice: options.toolChoice as any,
+      tool_choice: options.toolChoice as OpenAI.Chat.Completions.ChatCompletionToolChoiceOption | undefined,
       stop: options.stop,
       seed: options.seed,
-      response_format: options.responseFormat as any,
+      response_format: options.responseFormat as OpenAI.ResponseFormatText | OpenAI.ResponseFormatJSONObject | undefined,
       stream: false,
     });
 
     const choice = completion.choices[0];
+    const finishReason = (choice.finish_reason === 'function_call' ? 'stop' : choice.finish_reason) as 'stop' | 'length' | 'tool_calls' | 'content_filter' | null;
+
     return {
       id: completion.id,
       model: completion.model,
       choices: [{
         index: 0,
         message: {
-          role: choice.message.role,
-          content: choice.message.content || '',
+          role: 'assistant',
+          content: choice.message.content ?? '',
           toolCalls: choice.message.tool_calls?.map(tc => ({
-            id: tc.id,
+            id: tc.id ?? '',
             type: 'function' as const,
-            function: { name: tc.function.name, arguments: tc.function.arguments },
+            function: { name: tc.function?.name ?? '', arguments: tc.function?.arguments ?? '' },
           })),
         },
-        finishReason: choice.finish_reason,
+        finishReason,
       }],
       usage: {
         promptTokens: completion.usage?.prompt_tokens || 0,
@@ -99,7 +99,7 @@ export class OpenAIProvider extends BaseAIProvider {
     };
   }
 
-  async *chatStream(options: ChatCompletionOptions): AsyncIterable<StreamingChatResponse> {
+  async *chatStream(options: ChatCompletionOptions): AsyncGenerator<StreamingChatResponse> {
     const model = options.model || this.config.defaultModel || 'gpt-4o';
     const messages = this.formatMessages(options.messages);
     const tools = this.formatTools(options.tools);
@@ -113,10 +113,10 @@ export class OpenAIProvider extends BaseAIProvider {
       frequency_penalty: options.frequencyPenalty,
       presence_penalty: options.presencePenalty,
       tools: tools as OpenAI.Chat.Completions.ChatCompletionTool[] | undefined,
-      tool_choice: options.toolChoice as any,
+      tool_choice: options.toolChoice as OpenAI.Chat.Completions.ChatCompletionToolChoiceOption | undefined,
       stop: options.stop,
       seed: options.seed,
-      response_format: options.responseFormat as any,
+      response_format: options.responseFormat as OpenAI.ResponseFormatText | OpenAI.ResponseFormatJSONObject | undefined,
       stream: true,
     });
 
@@ -124,21 +124,23 @@ export class OpenAIProvider extends BaseAIProvider {
       const choice = chunk.choices[0];
       if (!choice) continue;
 
+      const finishReason = (choice.finish_reason === 'function_call' ? 'stop' : choice.finish_reason) as 'stop' | 'length' | 'tool_calls' | 'content_filter' | null;
+
       yield {
         id: chunk.id,
         model: chunk.model,
         choices: [{
           index: 0,
           delta: {
-            role: choice.delta.role,
-            content: choice.delta.content,
+            role: choice.delta.role as 'system' | 'user' | 'assistant' | 'tool' | undefined,
+            content: choice.delta.content ?? undefined,
             toolCalls: choice.delta.tool_calls?.map(tc => ({
-              id: tc.id,
+              id: tc.id ?? '',
               type: 'function' as const,
-              function: { name: tc.function.name, arguments: tc.function.arguments },
+              function: { name: tc.function?.name ?? '', arguments: tc.function?.arguments ?? '' },
             })),
           },
-          finishReason: choice.finish_reason,
+          finishReason,
         }],
         created: chunk.created,
       };

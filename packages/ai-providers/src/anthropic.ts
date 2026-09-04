@@ -2,7 +2,7 @@
 // Anthropic Provider Implementation
 // =============================================================================
 import Anthropic from '@anthropic-ai/sdk';
-import { BaseAIProvider, createProviderConfig } from './base';
+import { BaseAIProvider, createProviderConfig } from './base.js';
 import {
   AIProviderConfig,
   AIModel,
@@ -13,7 +13,7 @@ import {
   EmbeddingOptions,
   EmbeddingResponse,
   ProviderCapabilities,
-} from './types';
+} from './types.js';
 
 export class AnthropicProvider extends BaseAIProvider {
   name = 'anthropic' as const;
@@ -51,7 +51,7 @@ export class AnthropicProvider extends BaseAIProvider {
     return messages
       .filter(m => m.role !== 'system')
       .map(m => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
+        role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
         content: m.content,
       }));
   }
@@ -59,6 +59,24 @@ export class AnthropicProvider extends BaseAIProvider {
   private extractSystemPrompt(messages: ChatMessage[]): string | undefined {
     const systemMsg = messages.find(m => m.role === 'system');
     return systemMsg?.content;
+  }
+
+  private formatToolsForAnthropic(tools?: ChatCompletionOptions['tools']): Anthropic.Tool[] {
+    if (!tools) return [];
+    return tools.map(t => ({
+      name: t.function.name,
+      description: t.function.description,
+      input_schema: t.function.parameters as Anthropic.Tool.InputSchema,
+    }));
+  }
+
+  private convertToolChoice(choice: ChatCompletionOptions['toolChoice']): Anthropic.ToolChoiceAuto | Anthropic.ToolChoiceAny | Anthropic.ToolChoiceTool {
+    if (choice === 'auto') return { type: 'auto' };
+    if (choice === 'none') return { type: 'any' };
+    if (typeof choice === 'object' && choice.type === 'function') {
+      return { type: 'tool', name: choice.function.name };
+    }
+    return { type: 'auto' };
   }
 
   async chat(options: ChatCompletionOptions): Promise<ChatCompletionResponse> {
@@ -74,8 +92,8 @@ export class AnthropicProvider extends BaseAIProvider {
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens || 4096,
       top_p: options.topP,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: options.toolChoice ? this.convertToolChoice(options.toolChoice) : undefined,
+      ...(tools.length > 0 && { tools }),
+      ...(options.toolChoice && { tool_choice: this.convertToolChoice(options.toolChoice) }),
       stop_sequences: options.stop,
       stream: false,
     });
@@ -87,9 +105,12 @@ export class AnthropicProvider extends BaseAIProvider {
         index: 0,
         message: {
           role: 'assistant',
-          content: response.content.map(c => c.type === 'text' ? c.text : '').join(''),
+          content: response.content
+            .filter((c): c is Anthropic.TextBlock => c.type === 'text')
+            .map(c => c.text)
+            .join(''),
           toolCalls: response.content
-            .filter(c => c.type === 'tool_use')
+            .filter((c): c is Anthropic.ToolUseBlock => c.type === 'tool_use')
             .map(c => ({
               id: c.id,
               type: 'function' as const,
@@ -107,7 +128,7 @@ export class AnthropicProvider extends BaseAIProvider {
     };
   }
 
-  async *chatStream(options: ChatCompletionOptions): AsyncIterable<StreamingChatResponse> {
+  async *chatStream(options: ChatCompletionOptions): AsyncGenerator<StreamingChatResponse> {
     const model = options.model || this.config.defaultModel || 'claude-3-sonnet-20240229';
     const messages = this.convertMessages(options.messages);
     const system = this.extractSystemPrompt(options.messages);
@@ -120,20 +141,16 @@ export class AnthropicProvider extends BaseAIProvider {
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens || 4096,
       top_p: options.topP,
-      tools: tools.length > 0 ? tools : undefined,
-      tool_choice: options.toolChoice ? this.convertToolChoice(options.toolChoice) : undefined,
+      ...(tools.length > 0 && { tools }),
+      ...(options.toolChoice && { tool_choice: this.convertToolChoice(options.toolChoice) }),
       stop_sequences: options.stop,
       stream: true,
     });
-
-    let accumulatedContent = '';
-    let toolCalls: any[] = [];
 
     for await (const chunk of stream) {
       switch (chunk.type) {
         case 'content_block_delta':
           if (chunk.delta.type === 'text_delta') {
-            accumulatedContent += chunk.delta.text;
             yield {
               id: '',
               model,
@@ -144,8 +161,6 @@ export class AnthropicProvider extends BaseAIProvider {
               }],
               created: Math.floor(Date.now() / 1000),
             };
-          } else if (chunk.delta.type === 'input_json_delta') {
-            // Handle tool call streaming
           }
           break;
         case 'message_delta':
@@ -166,24 +181,8 @@ export class AnthropicProvider extends BaseAIProvider {
     }
   }
 
-  async embed(options: EmbeddingOptions): Promise<EmbeddingResponse> {
+  async embed(_options: EmbeddingOptions): Promise<EmbeddingResponse> {
     throw new Error('Anthropic does not support embeddings');
-  }
-
-  private formatToolsForAnthropic(tools?: any[]): Anthropic.Tool[] {
-    if (!tools) return [];
-    return tools.map(t => ({
-      name: t.function.name,
-      description: t.function.description,
-      input_schema: t.function.parameters,
-    }));
-  }
-
-  private convertToolChoice(choice: any): Anthropic.ToolChoice {
-    if (choice === 'auto') return { type: 'auto' };
-    if (choice === 'none') return { type: 'none' };
-    if (choice.type === 'function') return { type: 'tool', name: choice.function.name };
-    return { type: 'auto' };
   }
 }
 

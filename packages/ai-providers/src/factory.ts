@@ -1,10 +1,10 @@
 // =============================================================================
 // AI Provider Factory
 // =============================================================================
-import { AIProvider, AIProviderName, AIProviderConfig, AIProviderFactory, ProviderCapabilities } from './types';
-import { OpenAIProvider, createOpenAIProvider } from './openai';
-import { AnthropicProvider, createAnthropicProvider } from './anthropic';
-import { OllamaProvider, createOllamaProvider } from './ollama';
+import { AIProvider, AIProviderName, AIProviderConfig, AIProviderFactory, ProviderCapabilities, StreamingChatResponse } from './types.js';
+import { OpenAIProvider, createOpenAIProvider } from './openai.js';
+import { AnthropicProvider, createAnthropicProvider } from './anthropic.js';
+import { OllamaProvider, createOllamaProvider } from './ollama.js';
 
 export class AIProviderFactoryImpl implements AIProviderFactory {
   private providers: Map<AIProviderName, AIProvider> = new Map();
@@ -16,26 +16,22 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
   }
 
   private initializeProviders(env: Record<string, string | undefined>) {
-    // OpenAI
     if (env.OPENAI_API_KEY) {
       const provider = createOpenAIProvider(env);
       this.providers.set('openai', provider);
       this.config.openai = provider.config;
     }
 
-    // Anthropic
     if (env.ANTHROPIC_API_KEY) {
       const provider = createAnthropicProvider(env);
       this.providers.set('anthropic', provider);
       this.config.anthropic = provider.config;
     }
 
-    // Ollama (always available if running)
     const ollamaProvider = createOllamaProvider(env);
     this.providers.set('ollama', ollamaProvider);
     this.config.ollama = ollamaProvider.config;
 
-    // Set default provider based on availability
     if (this.providers.has('openai')) this.defaultProvider = 'openai';
     else if (this.providers.has('anthropic')) this.defaultProvider = 'anthropic';
     else this.defaultProvider = 'ollama';
@@ -43,14 +39,10 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
 
   createProvider(name: AIProviderName, config: AIProviderConfig): AIProvider {
     switch (name) {
-      case 'openai':
-        return new OpenAIProvider(config);
-      case 'anthropic':
-        return new AnthropicProvider(config);
-      case 'ollama':
-        return new OllamaProvider(config);
-      default:
-        throw new Error(`Unknown provider: ${name}`);
+      case 'openai': return new OpenAIProvider(config);
+      case 'anthropic': return new AnthropicProvider(config);
+      case 'ollama': return new OllamaProvider(config);
+      default: throw new Error(`Unknown provider: ${name}`);
     }
   }
 
@@ -83,41 +75,32 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
     task: 'chat' | 'embedding' | 'vision' | 'json' | 'cost',
     preferredProvider?: AIProviderName
   ): Promise<AIProviderName> {
-    // If preferred provider is available and supports the task, use it
     if (preferredProvider && this.providers.has(preferredProvider)) {
       const provider = this.providers.get(preferredProvider)!;
       if (this.supportsTask(provider, task)) return preferredProvider;
     }
 
-    // Find best provider for task
     const candidates = Array.from(this.providers.entries())
       .filter(([, provider]) => this.supportsTask(provider, task))
-      .sort((a, b) => this.scoreProvider(a[1], task) - this.scoreProvider(b[1], task));
+      .sort((a, b) => this.scoreProvider(b[1], task) - this.scoreProvider(a[1], task));
 
     return candidates[0]?.[0] || this.defaultProvider;
   }
 
   private supportsTask(provider: AIProvider, task: string): boolean {
     switch (task) {
-      case 'chat':
-        return provider.capabilities.chat;
-      case 'embedding':
-        return provider.capabilities.embedding;
-      case 'vision':
-        return provider.capabilities.vision;
-      case 'json':
-        return provider.capabilities.jsonMode;
-      case 'cost':
-        return true; // All providers have some cost model
-      default:
-        return false;
+      case 'chat': return provider.capabilities.chat;
+      case 'embedding': return provider.capabilities.embedding;
+      case 'vision': return provider.capabilities.vision;
+      case 'json': return provider.capabilities.jsonMode;
+      case 'cost': return true;
+      default: return false;
     }
   }
 
   private scoreProvider(provider: AIProvider, task: string): number {
     let score = 0;
     const defaultModel = provider.models.find(m => m.id === provider.config.defaultModel);
-    
     switch (task) {
       case 'chat':
         score += provider.capabilities.streaming ? 10 : 0;
@@ -138,13 +121,10 @@ export class AIProviderFactoryImpl implements AIProviderFactory {
   }
 }
 
-// Singleton instance
 let factoryInstance: AIProviderFactoryImpl | null = null;
 
 export function getAIFactory(env?: Record<string, string | undefined>): AIProviderFactoryImpl {
-  if (!factoryInstance) {
-    factoryInstance = new AIProviderFactoryImpl(env);
-  }
+  if (!factoryInstance) factoryInstance = new AIProviderFactoryImpl(env);
   return factoryInstance;
 }
 
@@ -152,13 +132,13 @@ export function resetAIFactory(): void {
   factoryInstance = null;
 }
 
-// Convenience functions
 export async function chat(
   options: Parameters<AIProvider['chat']>[0],
   providerName?: AIProviderName
 ): Promise<ReturnType<AIProvider['chat']>> {
   const factory = getAIFactory();
-  const provider = providerName ? factory.getProvider(providerName) : factory.getProvider(factory.getDefaultProvider());
+  const name = providerName || factory.getDefaultProvider();
+  const provider = factory.getProvider(name);
   if (!provider) throw new Error('No AI provider available');
   return provider.chat(options);
 }
@@ -166,9 +146,10 @@ export async function chat(
 export async function* chatStream(
   options: Parameters<AIProvider['chatStream']>[0],
   providerName?: AIProviderName
-): AsyncIterable<ReturnType<AIProvider['chatStream']>> {
+): AsyncGenerator<StreamingChatResponse> {
   const factory = getAIFactory();
-  const provider = providerName ? factory.getProvider(providerName) : factory.getProvider(factory.getDefaultProvider());
+  const name = providerName || factory.getDefaultProvider();
+  const provider = factory.getProvider(name);
   if (!provider) throw new Error('No AI provider available');
   yield* provider.chatStream(options);
 }
@@ -178,17 +159,16 @@ export async function embed(
   providerName?: AIProviderName
 ): Promise<ReturnType<AIProvider['embed']>> {
   const factory = getAIFactory();
-  const provider = providerName ? factory.getProvider(providerName) : factory.getProvider(factory.getDefaultProvider());
+  const name = providerName || factory.getDefaultProvider();
+  const provider = factory.getProvider(name);
   if (!provider) throw new Error('No AI provider available');
   return provider.embed(options);
 }
 
 export async function getBestProviderForChat(preferredProvider?: AIProviderName): Promise<AIProviderName> {
-  const factory = getAIFactory();
-  return factory.getBestProviderForTask('chat', preferredProvider);
+  return getAIFactory().getBestProviderForTask('chat', preferredProvider);
 }
 
 export async function getBestProviderForEmbedding(preferredProvider?: AIProviderName): Promise<AIProviderName> {
-  const factory = getAIFactory();
-  return factory.getBestProviderForTask('embedding', preferredProvider);
+  return getAIFactory().getBestProviderForTask('embedding', preferredProvider);
 }

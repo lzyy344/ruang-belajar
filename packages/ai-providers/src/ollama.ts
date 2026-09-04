@@ -1,7 +1,7 @@
 // =============================================================================
 // Ollama Provider Implementation (Local LLM)
 // =============================================================================
-import { BaseAIProvider, createProviderConfig } from './base';
+import { BaseAIProvider, createProviderConfig } from './base.js';
 import {
   AIProviderConfig,
   AIModel,
@@ -12,7 +12,7 @@ import {
   EmbeddingOptions,
   EmbeddingResponse,
   ProviderCapabilities,
-} from './types';
+} from './types.js';
 
 interface OllamaGenerateResponse {
   model: string;
@@ -35,6 +35,9 @@ interface OllamaEmbeddingResponse {
 export class OllamaProvider extends BaseAIProvider {
   name = 'ollama' as const;
   config: AIProviderConfig;
+  // Required by BaseAIProvider abstract
+  protected client: unknown = null;
+
   capabilities: ProviderCapabilities = {
     chat: true,
     embedding: true,
@@ -62,12 +65,12 @@ export class OllamaProvider extends BaseAIProvider {
     return this.config.baseUrl || 'http://localhost:11434';
   }
 
-  private async fetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async doFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...options.headers,
+        ...(options.headers as Record<string, string> || {}),
       },
     });
 
@@ -76,7 +79,7 @@ export class OllamaProvider extends BaseAIProvider {
       throw new Error(`Ollama API error: ${response.status} - ${error}`);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
   async chat(options: ChatCompletionOptions): Promise<ChatCompletionResponse> {
@@ -84,7 +87,7 @@ export class OllamaProvider extends BaseAIProvider {
     const messages = this.formatMessages(options.messages);
     const prompt = this.messagesToPrompt(messages);
 
-    const response = await this.fetch<OllamaGenerateResponse>('/api/generate', {
+    const response = await this.doFetch<OllamaGenerateResponse>('/api/generate', {
       method: 'POST',
       body: JSON.stringify({
         model,
@@ -119,7 +122,7 @@ export class OllamaProvider extends BaseAIProvider {
     };
   }
 
-  async *chatStream(options: ChatCompletionOptions): AsyncIterable<StreamingChatResponse> {
+  async *chatStream(options: ChatCompletionOptions): AsyncGenerator<StreamingChatResponse> {
     const model = options.model || this.config.defaultModel || 'llama3';
     const messages = this.formatMessages(options.messages);
     const prompt = this.messagesToPrompt(messages);
@@ -189,7 +192,7 @@ export class OllamaProvider extends BaseAIProvider {
 
     const embeddings = await Promise.all(
       inputs.map(async (input) => {
-        const response = await this.fetch<OllamaEmbeddingResponse>('/api/embeddings', {
+        const response = await this.doFetch<OllamaEmbeddingResponse>('/api/embeddings', {
           method: 'POST',
           body: JSON.stringify({ model, prompt: input }),
         });
@@ -215,7 +218,7 @@ export class OllamaProvider extends BaseAIProvider {
 
   async listModels(): Promise<AIModel[]> {
     try {
-      const response = await this.fetch<{ models: { name: string }[] }>('/api/tags');
+      const response = await this.doFetch<{ models: { name: string }[] }>('/api/tags');
       const availableModels = response.models.map(m => m.name);
       return this.models.filter(m => availableModels.includes(m.id));
     } catch {
