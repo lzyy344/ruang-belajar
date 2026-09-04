@@ -7,6 +7,7 @@
     'no-console': 'off',
     'no-unused-vars': 'off',
     'require-yield': 'off',
+    'no-undef': 'off',
   },
   ignorePatterns: ['dist/', 'node_modules/'],
 };
