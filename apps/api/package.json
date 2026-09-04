@@ -1,0 +1,72 @@
+{
+  "name": "@ruang-belajar/api",
+  "version": "0.1.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:worker": "tsx watch src/worker/index.ts",
+    "build": "tsc && tsc-alias",
+    "build:worker": "tsc -p tsconfig.worker.json && tsc-alias -p tsconfig.worker.json",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:prod": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "prisma:format": "prisma format",
+    "prisma:validate": "prisma validate"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.10.0",
+    "@ruang-belajar/shared": "*",
+    "@ruang-belajar/ai-providers": "*",
+    "@trpc/server": "^10.45.0",
+    "@trpc/next": "^10.45.0",
+    "zod": "^3.22.4",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "jose": "^5.2.0",
+    "bullmq": "^5.7.0",
+    "ioredis": "^5.3.0",
+    "@aws-sdk/client-s3": "^3.520.0",
+    "@aws-sdk/s3-request-presigner": "^3.520.0",
+    "ffmpeg-static": "^5.2.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "assemblyai": "^4.2.0",
+    "pino": "^8.19.0",
+    "pino-pretty": "^11.0.0",
+    "superjson": "^2.2.1",
+    "next-auth": "^5.0.0-beta.15",
+    "@auth/prisma-adapter": "^2.0.0",
+    "nodemailer": "^6.9.11",
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "prisma": "^5.10.0",
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0",
+    "tsc-alias": "^1.8.0",
+    "eslint": "^8.57.0",
+    "vitest": "^1.4.0",
+    "@types/node": "^20.12.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/nodemailer": "^6.4.14",
+    "@types/fluent-ffmpeg": "^2.1.24"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  }
+}

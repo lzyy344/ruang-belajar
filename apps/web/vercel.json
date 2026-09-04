@@ -1,0 +1,17 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "cd ../.. && npm run build -- --filter=@ruang-belajar/web",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "npm install",
+  "env": {
+    "NEXTAUTH_URL": "@nextauth_url",
+    "NEXTAUTH_SECRET": "@nextauth_secret",
+    "DATABASE_URL": "@database_url",
+    "REDIS_URL": "@redis_url",
+    "OPENAI_API_KEY": "@openai_api_key",
+    "S3_ENDPOINT": "@s3_endpoint",
+    "S3_ACCESS_KEY": "@s3_access_key",
+    "S3_SECRET_KEY": "@s3_secret_key",
+    "S3_BUCKET": "@s3_bucket"
+  }
+}

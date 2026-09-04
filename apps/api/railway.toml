@@ -1,0 +1,15 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "docker/Dockerfile.worker.prod"
+buildCommand = "npm run build --workspace=@ruang-belajar/api"
+
+[deploy]
+startCommand = "node dist/worker/index.js"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "worker"
+
+[services.deploy]
+numReplicas = 1

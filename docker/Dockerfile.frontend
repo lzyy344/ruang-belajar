@@ -1,0 +1,30 @@
+# =============================================================================
+# Frontend Development Dockerfile
+# =============================================================================
+FROM node:20-alpine AS base
+
+# Install dependencies for native modules
+RUN apk add --no-cache openssl libc6-compat python3 make g++
+
+WORKDIR /app
+
+# Copy root package files
+COPY package.json package-lock.json turbo.json ./
+
+# Copy package.json files for all workspaces
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/ui/package.json ./packages/ui/
+COPY packages/ai-providers/package.json ./packages/ai-providers/
+
+# Install dependencies with npm
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Run dev server
+CMD ["npm", "run", "dev", "--workspace=@ruang-belajar/web"]

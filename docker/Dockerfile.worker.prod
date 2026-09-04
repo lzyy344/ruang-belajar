@@ -1,0 +1,50 @@
+# =============================================================================
+# Worker Production Dockerfile (Multi-stage)
+# =============================================================================
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat ffmpeg
+WORKDIR /app
+
+# -----------------------------------------------------------------------------
+# Builder Stage
+# -----------------------------------------------------------------------------
+FROM base AS builder
+
+COPY package.json package-lock.json turbo.json ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/ui/package.json ./packages/ui/
+COPY packages/ai-providers/package.json ./packages/ai-providers/
+
+# Install dependencies with npm (consistent with project package manager)
+RUN npm ci
+
+COPY . .
+
+# Generate Prisma client then build API
+RUN npm run db:generate -- --filter=@ruang-belajar/api
+RUN npm run build -- --filter=@ruang-belajar/api
+
+# -----------------------------------------------------------------------------
+# Runner Stage
+# -----------------------------------------------------------------------------
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+RUN apk add --no-cache ffmpeg
+
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 worker
+
+# Copy compiled dist (not source)
+COPY --from=builder --chown=worker:nodejs /app/apps/api/dist ./dist
+COPY --from=builder --chown=worker:nodejs /app/apps/api/node_modules ./node_modules
+COPY --from=builder --chown=worker:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=worker:nodejs /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder --chown=worker:nodejs /app/packages/ai-providers/dist ./packages/ai-providers/dist
+
+USER worker
+
+CMD ["node", "dist/worker/index.js"]

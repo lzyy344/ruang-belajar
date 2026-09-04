@@ -1,0 +1,32 @@
+# =============================================================================
+# Worker Development Dockerfile
+# =============================================================================
+FROM node:20-alpine AS base
+
+# Install dependencies for native modules (FFmpeg, etc.)
+RUN apk add --no-cache \
+    libc6-compat \
+    python3 \
+    make \
+    g++ \
+    ffmpeg
+
+WORKDIR /app
+
+# Copy root package files
+COPY package.json package-lock.json turbo.json ./
+
+# Copy package.json files for all workspaces
+COPY apps/api/package.json ./apps/api/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/ui/package.json ./packages/ui/
+COPY packages/ai-providers/package.json ./packages/ai-providers/
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Run worker in dev mode with hot reload
+CMD ["npm", "run", "dev:worker", "--workspace=api"]
