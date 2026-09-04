@@ -1,4 +1,4 @@
-module.exports = {
+﻿module.exports = {
   env: {
     es2022: true,
     node: true,
@@ -9,9 +9,8 @@ module.exports = {
   ],
   parser: '@typescript-eslint/parser',
   parserOptions: {
-    ecmaVersion: 'latest',
+    ecmaVersion: 2022,
     sourceType: 'module',
-    project: './tsconfig.json',
   },
   plugins: ['@typescript-eslint'],
   rules: {
